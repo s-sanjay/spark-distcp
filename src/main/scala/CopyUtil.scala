@@ -28,8 +28,8 @@ class CopyUtil(fsOps: FileSystemOps = FileSystemUtil) extends Logging {
         bytesRead = srcInputStream.read(buffer)
       }
     } finally {
-      dstOutputStream.close()
-      srcInputStream.close()
+      if (dstOutputStream != null) dstOutputStream.close()
+      if (srcInputStream != null) srcInputStream.close()
     }
   }
 
@@ -38,7 +38,7 @@ class CopyUtil(fsOps: FileSystemOps = FileSystemUtil) extends Logging {
     val chunkSize = SparkDistPConf.get[Long](sparkContext.getConf)(SparkDistPConf.CONF_DISTP_COPY_CHUNK_SIZE)
     assert(chunkSize > 0)
     val src = srcFileStatus.getPath
-    val dstFileStatus = fsOps.getFileStatusOrThrow(dstFs, dst)
+    val dstFileStatusOpt = fsOps.getFileStatus(dstFs, dst)
     val fileSize: Long = srcFileStatus.getLen
     val numChunks: Long = if (chunkSize == Long.MaxValue) 1L else (fileSize + chunkSize - 1) / chunkSize
 
@@ -46,10 +46,9 @@ class CopyUtil(fsOps: FileSystemOps = FileSystemUtil) extends Logging {
     if (srcFileStatus.isDirectory) {
       assert(!SparkDistPConf.get[Boolean](sparkContext.getConf)(SparkDistPConf.CONF_DISTP_FLATTEN_LISTING_MODE))
       logInfo(s"source $src is a directory so further parallelize it after mkdir the source")
-      if (dstFileStatus == null) {
-        dstFs.mkdirs(dst, srcFileStatus.getPermission)
-      } else {
-        dstFs.setPermission(dst, srcFileStatus.getPermission)
+      dstFileStatusOpt match {
+        case None        => fsOps.mkdirsOrThrow(dstFs, dst, srcFileStatus.getPermission)
+        case Some(_)     => fsOps.setPermissionOrThrow(dstFs, dst, srcFileStatus.getPermission)
       }
       doRun(srcFileStatus, dst, sparkContext, srcFs.getConf)
       return
@@ -71,16 +70,16 @@ class CopyUtil(fsOps: FileSystemOps = FileSystemUtil) extends Logging {
     val tmpFile = chunkFiles.last
     if (chunkSize < Long.MaxValue) {
       logInfo("chunking is enabled")
-      dstFs.concat(tmpFile, chunkFiles.dropRight(1))
+      fsOps.concatOrThrow(dstFs, tmpFile, chunkFiles.dropRight(1))
     } else {
       logInfo("chunking not enabled")
       assert(chunkFiles.length == 1)
     }
-    if (dstFileStatus != null) {
-      dstFs.delete(dst, false)
+    if (dstFileStatusOpt.isDefined) {
+      fsOps.deleteIfExistsOrThrow(dstFs, dst, recursive = false)
     }
-    dstFs.rename(tmpFile, dst)
-    dstFs.setPermission(dst, srcFileStatus.getPermission)
+    fsOps.renameOrThrow(dstFs, tmpFile, dst)
+    fsOps.setPermissionOrThrow(dstFs, dst, srcFileStatus.getPermission)
 
     CheckSumUtil.compareFileLengthsAndChecksums(srcFs, src, null, dstFs, dst,
       SparkDistPConf.get[Boolean](sparkContext.getConf)(SparkDistPConf.CONF_DISTP_COPY_SKIP_CRC_CHECK))
@@ -115,7 +114,7 @@ class CopyUtil(fsOps: FileSystemOps = FileSystemUtil) extends Logging {
     } else {
       // in this mode, we only list the parent level path and then let the executors list sub directories when needed
       // so there is no need for multi threading
-      fs.listStatus(path).toSeq
+      fsOps.listStatusOrThrow(fs, path)
     }
   }
 }

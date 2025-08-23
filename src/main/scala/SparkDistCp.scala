@@ -29,20 +29,22 @@ object SparkDistCp extends Logging {
   }
 
   private def execute(srcPath: Path, dstPath: Path, sc: SparkContext, hadoopConf: Configuration, fs: FileSystem): Unit = {
-    val srcFileStatus = fs.getFileStatus(srcPath)
-    if (srcFileStatus == null) {
+    val fsOps = FileSystemUtil
+    val srcFileStatusOpt = fsOps.getFileStatus(fs, srcPath)
+    if (srcFileStatusOpt.isEmpty) {
       logError(s"Source path does not exist: $srcPath")
       throw new IOException(s"Source path does not exist: $srcPath")
     }
-    if (fs.exists(dstPath)) {
+    val srcFileStatus = srcFileStatusOpt.get
+    val dstStatusOpt = fsOps.getFileStatus(fs, dstPath)
+    if (dstStatusOpt.isDefined) {
       logInfo(s"Destination path already exists: $dstPath just set permission")
-      fs.setPermission(dstPath, fs.getFileStatus(srcPath).getPermission)
+      fsOps.setPermissionOrThrow(fs, dstPath, srcFileStatus.getPermission)
     } else {
       logInfo(s"create top level dest: $dstPath and set permission")
-      fs.mkdirs(dstPath, srcFileStatus.getPermission)
+      fsOps.mkdirsOrThrow(fs, dstPath, srcFileStatus.getPermission)
     }
-    val util = new CopyUtil();
+    val util = new CopyUtil()
     util.doRun(srcFileStatus, dstPath, sc, hadoopConf)
   }
 }
-
