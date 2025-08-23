@@ -3,7 +3,11 @@ scalaVersion := "2.12.17"
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % "3.3.4" exclude("org.apache.hadoop", "hadoop-client"),
   "org.apache.spark" %% "spark-sql" % "3.3.4" exclude("org.apache.hadoop", "hadoop-client"),
-  "org.apache.hadoop" % "hadoop-client" % "2.8.2"
+  "org.apache.hadoop" % "hadoop-client" % "2.8.2",
+  // Test dependencies
+  "org.scalatest" %% "scalatest" % "3.2.18" % Test,
+  "org.mockito" %% "mockito-scala" % "1.17.31" % Test,
+  "org.mockito" %% "mockito-scala-scalatest" % "1.17.31" % Test
 )
 
 dependencyOverrides ++= Seq(
